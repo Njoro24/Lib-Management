@@ -1,73 +1,73 @@
-from models.members import Member
-from models.database import get_db_session
+from sqlalchemy import Column, Integer, String, Date
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
+from datetime import date
+from .database import Base
 
-def find_member_by_name(self):
-    """Find member by name."""
-    print("\n--- Find Member by Name ---")
+class Member(Base):
+    __tablename__ = "members"
     
-    name = input("Enter member name to search (or 'q' to go back): ").strip()
-    if name.lower() == 'q':
-        return
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    _name = Column("name", String(100), nullable=False)
+    _email = Column("email", String(150), unique=True, nullable=False)
+    _phone = Column("phone", String(20), nullable=True)
+    membership_date = Column(Date, nullable=False, default=date.today)
     
-    # Use like() instead of ilike() for better SQLite compatibility
-    members = self.session.query(Member).filter(
-        Member.name.like(f"%{name}%")
-    ).all()
-    
-    # If no results with like(), try case-insensitive search manually
-    if not members:
-        members = self.session.query(Member).filter(
-            Member.name.contains(name)
-        ).all()
-    
-    # If still no results, try even more flexible search
-    if not members:
-        all_members = self.session.query(Member).all()
-        members = [m for m in all_members if name.lower() in m.name.lower()]
-    
-    if not members:
-        print(f"No members found with name containing '{name}'")
-        return
-    
-    print(f"\nFound {len(members)} member(s):")
-    for member in members:
-        print(f"\n{member}")
-        if member.borrowed_books:
-            print(f"  Currently borrowed books: {len(member.borrowed_books)}")
+    borrowed_books = relationship("Book", back_populates="borrower")
 
-def find_member_by_email(self):
-    """Find member by email."""
-    print("\n--- Find Member by Email ---")
-    
-    email = input("Enter member email to search (or 'q' to go back): ").strip()
-    if email.lower() == 'q':
-        return
-    
-    # Try exact match first
-    member = self.session.query(Member).filter(
-        Member.email == email
-    ).first()
-    
-    # If no exact match, try partial match
-    if not member:
-        member = self.session.query(Member).filter(
-            Member.email.like(f"%{email}%")
-        ).first()
-    
-    # If still no match, try case-insensitive search
-    if not member:
-        all_members = self.session.query(Member).all()
-        for m in all_members:
-            if email.lower() in m.email.lower():
-                member = m
-                break
-    
-    if not member:
-        print(f"No member found with email containing '{email}'")
-        return
-    
-    print(f"\n{member}")
-    if member.borrowed_books:
-        print(f"Currently borrowed books: {len(member.borrowed_books)}")
-        for book in member.borrowed_books:
-            print(f"  - {book.title} by {book.author} (Due: {book.due_date})")
+    def __init__(self, name, email, phone=None):
+        self.name = name
+        self.email = email
+        self.phone = phone
+        self.membership_date = date.today()
+
+    # Hybrid property for name
+    @hybrid_property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        if not value or not value.strip():
+            raise ValueError("Name cannot be empty")
+        if len(value.strip()) < 2:
+            raise ValueError("Name must be at least 2 characters long")
+        self._name = value.strip()
+
+    # Hybrid property for email
+    @hybrid_property
+    def email(self):
+        return self._email
+
+    @email.setter
+    def email(self, value):
+        if not value or not value.strip():
+            raise ValueError("Email cannot be empty")
+        if "@" not in value or "." not in value:
+            raise ValueError("Please enter a valid email address")
+        self._email = value.strip().lower()
+
+    # Hybrid property for phone
+    @hybrid_property
+    def phone(self):
+        return self._phone
+
+    @phone.setter
+    def phone(self, value):
+        if value is not None:
+            cleaned_phone = value.replace(" ", "").replace("-", "")
+            if cleaned_phone and not cleaned_phone.isdigit():
+                raise ValueError("Phone number should contain only digits")
+            self._phone = cleaned_phone if cleaned_phone else None
+        else:
+            self._phone = None
+
+    def can_borrow_books(self):
+        return len(self.borrowed_books) < 5
+
+    def __repr__(self):
+        return f"<Member(id={self.id}, name='{self.name}', email='{self.email}')>"
+
+    def __str__(self):
+        phone_str = f", Phone: {self.phone}" if self.phone else ""
+        return f"Member #{self.id}: {self.name} ({self.email}){phone_str} - Joined: {self.membership_date}"
